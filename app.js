@@ -21,13 +21,13 @@
   };
 
   // ---------- 설정 ----------
-  const S = Object.assign({ mode: 'first', nth: 2, theme: 'sunset', cam: 'follow', speed: '1', music: 'off', lap: 'half' }, store.get('runDraw.settings', {}));
+  const S = Object.assign({ mode: 'first', nth: 2, theme: 'sunset', cam: 'follow', speed: '1', music: 'off', dist: '100', scene: 'river' }, store.get('runDraw.settings', {}));
   const DEFAULT_NAMES = '김민준, 이서연, 박지호, 최하은, 정우진, 강수아, 조예준, 윤지우';
   const namesEl = $('#names');
   namesEl.value = store.get('runDraw.names', DEFAULT_NAMES);
 
-  // ---------- 트랙 ----------
-  const TR = { L: 84.39, R0: 36.5, LW: 1.22 };
+  // ---------- 코스 (일직선) ----------
+  const TR = { LW: 1.9 }; // 그림 속 레인 폭 (겹치지 않게 실제보다 넓게)
   const track = { lanes: 8, width: 8 * TR.LW, rMin: 0, D: 0 };
 
   function parseNames(txt) {
@@ -40,32 +40,13 @@
     return out.slice(0, 60);
   }
 
-  // 경로: 왼쪽 곡선 시작(위쪽) → 곡선 → 아래 직선 → 결승(x = L/2)
-  function pathPos(r, q) {
-    const L = TR.L;
-    if (q < -L) { // 오른쪽 곡선 (한 바퀴 코스의 앞부분)
-      const th = Math.max(0, (q + L + Math.PI * r) / r);
-      return { x: L / 2 + r * Math.sin(th), y: r * Math.cos(th), hx: Math.cos(th), hy: -Math.sin(th) };
-    }
-    if (q < 0) return { x: -L / 2 - q, y: -r, hx: -1, hy: 0 };
-    if (S.lap === 'straight' && q < Math.PI * r) { // 1자 코스: 홈 직선을 왼쪽으로 늘린 연장 구간
-      return { x: -L / 2 + (q - Math.PI * r), y: r, hx: 1, hy: 0 };
-    }
-    if (q < Math.PI * r) {
-      const th = q / r;
-      return { x: -L / 2 - r * Math.sin(th), y: -r * Math.cos(th), hx: -Math.cos(th), hy: Math.sin(th) };
-    }
-    const t = q - Math.PI * r;
-    if (t <= L) return { x: -L / 2 + t, y: r, hx: 1, hy: 0 };
-    const th2 = Math.min(Math.PI, (t - L) / r);
-    return { x: L / 2 + r * Math.sin(th2), y: r * Math.cos(th2), hx: Math.cos(th2), hy: -Math.sin(th2) };
-  }
+  // 경로: x축을 따라 곧게 달림 (q = 출발선에서 달린 거리, r = 레인 위치)
+  function pathPos(r, q) { return { x: q, y: r, hx: 1, hy: 0 }; }
 
   // ---------- 주자 ----------
   let runners = [];
   let seedBase = store.get('runDraw.seed', (Math.random() * 1e9) | 0);
-  const V0 = () => track.D / (S.lap === 'full' ? 26 : S.lap === 'straight' ? 11 : 15); // 1자 약 11초, 반 바퀴 약 15초, 한 바퀴 약 26초
-  const STRAIGHT_D = 100;
+  const V0 = () => track.D / (4 + track.D * 0.07); // 100m 약 11초, 200m 약 18초, 300m 약 25초
 
   function build(reshuffle) {
     if (reshuffle) { seedBase = (Math.random() * 1e9) | 0; store.set('runDraw.seed', seedBase); }
@@ -74,20 +55,18 @@
     const rng = mulberry(seedBase);
     const order = names.map((_, i) => i);
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-    track.lanes = n <= 8 ? 8 : Math.min(12, n);
+    track.lanes = clamp(n, 3, 12);
     track.width = track.lanes * TR.LW;
     runners = order.map((ni, i) => {
       let r;
-      if (n <= 8) r = TR.R0 + (i + Math.floor((8 - n) / 2) + 0.5) * TR.LW;
-      else r = TR.R0 + (i + 0.5) * track.width / n;
+      if (n <= 12) r = (i + Math.floor((track.lanes - n) / 2) + 0.5) * TR.LW;
+      else r = (i + 0.5) * track.width / n;
       const lr = mulberry(hash(names[ni]) ^ (seedBase + i * 7919));
       const look = Runner.makeLook(lr);
-      return { name: names[ni], idx: i, r, look, q0: 0, s: 0, v: 0, ph: lr() * 6.28, face: -1, k: 0 };
+      return { name: names[ni], idx: i, r, look, q0: 0, s: 0, v: 0, ph: lr() * 6.28, face: 1, k: 0 };
     });
-    track.rMin = runners.length ? Math.min(...runners.map((o) => o.r)) : TR.R0;
-    track.D = S.lap === 'full' ? 2 * TR.L + 2 * Math.PI * track.rMin : S.lap === 'straight' ? STRAIGHT_D : TR.L + Math.PI * track.rMin;
-    // 결승선(아래 직선 끝)까지 모두 같은 거리 D가 되도록 출발 위치를 앞당김(스태거). 1자 코스는 모두 같은 줄에서 출발
-    runners.forEach((o) => { o.q0 = Math.PI * o.r + TR.L - track.D; });
+    track.D = clamp(+S.dist || 100, 50, 300);
+    runners.forEach((o) => { o.q0 = 0; }); // 모두 같은 출발선
     $('#cnt').textContent = n + '명';
     $('#hTot').textContent = n;
     resetRace();
@@ -101,7 +80,7 @@
     runners.forEach((o) => {
       const rr = Math.random;
       Object.assign(o, {
-        s: 0, v: 0, fin: false, rank: 0, ftime: 0, face: -1, k: 0,
+        s: 0, v: 0, fin: false, rank: 0, ftime: 0, face: 1, k: 0,
         react: 0.08 + rr() * 0.28, base: 0.965 + rr() * 0.07,
         w1: 0.5 + rr() * 0.9, w2: 1.1 + rr() * 1.4, p1: rr() * 6.28, p2: rr() * 6.28,
         ev: 0, evT: 1.5 + rr() * 2, evDur: 0, kick: rr() * 0.14 - 0.03, stumble: 0, oops: 0,
@@ -223,32 +202,25 @@
   window.addEventListener('resize', resize);
 
   function camTarget() {
-    if (S.cam === 'all') return { x: -14, y: -4, back: 125 };
-    if (!runners.length) return { x: 0, y: 0, back: 60 };
-    if (race.state === 'idle' || race.state === 'countdown') {
-      let sx = 0, sy = 0;
-      runners.forEach((o) => { const p = pathPos(o.r, o.q0); sx += p.x; sy += p.y; });
-      return { x: sx / runners.length - 4, y: sy / runners.length + 2, back: 22 };
-    }
-    if (race.winner && performance.now() - race.declaredAt > 1800) return { x: TR.L / 2 + 5, y: TR.R0 + track.width * 0.3, back: 24 };
-    let f = race.winner && performance.now() - race.declaredAt > 400 ? race.winner : ranking()[targetRank() - 1];
-    const p = pathPos(f.r, f.q0 + f.s);
-    // 무리 퍼짐에 따라 줌
+    const W = track.width, D = track.D;
+    if (S.cam === 'all') return { x: D / 2, y: W / 2, back: D * 0.62 + 18, ratio: 0.5 };
+    if (!runners.length) return { x: 0, y: W / 2, back: 30, ratio: 0.45 };
+    const base = 7.5 + W * 0.5;
+    if (race.state === 'idle' || race.state === 'countdown') return { x: 5, y: W / 2, back: base + 2, ratio: 0.45 };
+    if (race.winner && performance.now() - race.declaredAt > 1800) return { x: D + 3, y: W / 2, back: base + 4, ratio: 0.45 };
+    const f = race.winner && performance.now() - race.declaredAt > 400 ? race.winner : ranking()[targetRank() - 1];
     const list = ranking();
-    const lead = list[0], tail = list[list.length - 1];
-    const spread = Math.abs(lead.s - tail.s);
-    const back = clamp(12 + spread * 0.25, 13, 26);
-    const farBoost = clamp((-p.y - 15) / 30, 0, 1) * 9; // 맞은편 직선에서는 조금 더 멀리서 비춰 도시가 보이게
-    return { x: p.x + p.hx * 3, y: p.y + p.hy * 3, back: back + farBoost };
+    const spread = Math.abs(list[0].s - list[list.length - 1].s);
+    const back = base + clamp(spread * 0.3, 0, 16);
+    return { x: Math.min(f.s, D + 6) + 3, y: W / 2, back, ratio: 0.45 };
   }
 
   function updateCam(dt) {
     const t = camTarget();
-    if (S.lap === 'straight' && S.cam !== 'all') { t.ratio = 0.8; t.back *= 0.62; }
     if (!cam.inited) { Object.assign(cam, t); cam.inited = true; return; }
     const a = Math.min(1, dt * 2.6);
     cam.x += (t.x - cam.x) * a; cam.y += (t.y - cam.y) * a; cam.back += (t.back - cam.back) * Math.min(1, dt * 1.5);
-    cam.ratio += ((t.ratio || 0.42) - cam.ratio) * Math.min(1, dt * 1.5);
+    cam.ratio += ((t.ratio || 0.45) - cam.ratio) * Math.min(1, dt * 1.5);
   }
 
   function setupProj() {
@@ -281,22 +253,6 @@
     ctx.closePath();
   }
 
-  const ovalCache = new Map();
-  function oval(r) {
-    const key = r.toFixed(3);
-    if (ovalCache.has(key)) return ovalCache.get(key);
-    const L = TR.L, pts = [], N = 40;
-    pts.push({ x: L / 2, y: -r }, { x: 0, y: -r });
-    for (let i = 0; i <= N; i++) { const a = (i / N) * Math.PI; pts.push({ x: -L / 2 - r * Math.sin(a), y: -r * Math.cos(a) }); }
-    pts.push({ x: 0, y: r });
-    for (let i = 0; i <= N; i++) { const a = (i / N) * Math.PI; pts.push({ x: L / 2 + r * Math.sin(a), y: r * Math.cos(a) }); }
-    ovalCache.set(key, pts);
-    return pts;
-  }
-  function ring(r1, r2, color) {
-    ctx.beginPath(); polyPath(oval(r2)); polyPath(oval(r1));
-    ctx.fillStyle = color; ctx.fill('evenodd');
-  }
   function quad(pts, color) { ctx.beginPath(); polyPath(pts); ctx.fillStyle = color; ctx.fill(); }
 
   // ---------- 테마 ----------
@@ -347,7 +303,7 @@
       ctx.globalAlpha = 1;
     }
     // 해 / 달
-    const sx = CW * 0.5 - cam.x * 0.4, sy = HZ * 0.55, sr = Math.min(CW, CH) * 0.13;
+    const sx = CW * 0.62 - cam.x * 0.15, sy = HZ * 0.55, sr = Math.min(CW, CH) * 0.13;
     const sg = ctx.createRadialGradient(sx, sy, sr * 0.6, sx, sy, sr * 2.2);
     sg.addColorStop(0, th.sunGlow); sg.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = sg; ctx.fillRect(sx - sr * 2.2, sy - sr * 2.2, sr * 4.4, sr * 4.4);
@@ -366,7 +322,7 @@
     // 먼 빌딩
     const s = CH / 600;
     ctx.fillStyle = th.far;
-    skyline.far.forEach((b) => {
+    if (S.scene === 'city') skyline.far.forEach((b) => {
       let x = ((b.x - cam.x * 0.6) % 2400 + 2400) % 2400 - 100;
       for (let rep = 0; rep < 2; rep++, x += 2400) {
         if (x > CW + 100 || x + b.w < -100) continue;
@@ -378,116 +334,64 @@
         }
       }
     });
-    city.drawSkyFx(S.theme, time, HZ, CW);
+    scenes.far(S.scene, S.theme, time);
+    if (S.scene === 'city') city.drawSkyFx(S.theme, time, HZ, CW);
   }
   function roundRect(x, y, w, h, r) {
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
 
-  // 트랙 주변 장식 (월드 공간)
-  const decor = (() => {
-    const rng = mulberry(7), list = [];
-    const R = TR.R0 + 12 * TR.LW + 7;
-    const pts = oval(R);
-    // 오벌 둘레를 따라 일정 간격으로
-    let acc = 0;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      const d = Math.hypot(b.x - a.x, b.y - a.y);
-      const steps = Math.floor((acc + d) / 6.5);
-      for (let s = 0; s < steps; s++) {
-        const t = ((s + 1) * 6.5 - acc) / d;
-        if (t < 0 || t > 1) continue;
-        const x = a.x + (b.x - a.x) * t + (rng() - 0.5) * 3, y = a.y + (b.y - a.y) * t + (rng() - 0.5) * 3;
-        const nearSide = y > 10;
-        list.push({ kind: nearSide ? 'bush' : 'tree', x, y: nearSide ? y + 2 : y - rng() * 4, s: 0.8 + rng() * 0.5, c: Math.floor(rng() * 3) });
-      }
-      acc = (acc + d) % 6.5;
-    }
-    for (let i = 0; i < 14; i++) list.push({ kind: 'tree', x: -150 + rng() * 300, y: -(R + 10 + rng() * 18), s: 1 + rng() * 0.6, c: Math.floor(rng() * 3) });
-    return list.filter((d) => !(Math.abs(d.x) < 50 && d.y < -45 && d.y > -70));
-  })();
-
   const city = City.create({ ctx: () => ctx, proj: (X, Y, Z) => proj(X, Y, Z), cam: () => cam, camY: () => camY(), W: () => CW, mulberry });
+  const scenes = Scenes.create({ ctx: () => ctx, proj: (X, Y, Z) => proj(X, Y, Z), cam: () => cam, camY: () => camY(), W: () => CW, H: () => CH, HZ: () => HZ, quad, mulberry });
 
-  function drawTree(d, th) {
-    const p = proj(d.x, d.y, 0);
-    if (p.zc < 2) return;
-    const k = p.k * d.s;
-    ctx.fillStyle = th.trunk; ctx.fillRect(p.x - 0.18 * k, p.y - 2.2 * k, 0.36 * k, 2.2 * k);
-    const c = th.tree;
-    ctx.fillStyle = c[d.c % 3]; ctx.beginPath(); ctx.arc(p.x, p.y - 3.2 * k, 1.6 * k, 0, 7); ctx.fill();
-    ctx.fillStyle = c[(d.c + 1) % 3]; ctx.beginPath(); ctx.arc(p.x - 0.9 * k, p.y - 2.5 * k, 1.1 * k, 0, 7); ctx.arc(p.x + 1 * k, p.y - 2.6 * k, 1.15 * k, 0, 7); ctx.fill();
-  }
-  function drawBush(d, th) {
-    const p = proj(d.x, d.y, 0);
-    if (p.zc < 3) return;
-    const k = p.k * d.s;
-    ctx.fillStyle = th.bush[d.c % 2];
-    ctx.beginPath(); ctx.arc(p.x - 0.7 * k, p.y - 0.45 * k, 0.75 * k, 0, 7); ctx.arc(p.x + 0.5 * k, p.y - 0.6 * k, 0.9 * k, 0, 7); ctx.arc(p.x + 1.4 * k, p.y - 0.35 * k, 0.6 * k, 0, 7); ctx.fill();
-    ctx.fillRect(p.x - 1.4 * k, p.y - 0.45 * k, 3.4 * k, 0.45 * k);
-  }
-
-  function drawGround(th) {
+  function drawGround() {
+    const sc = scenes.colors(S.scene, S.theme);
     const g = ctx.createLinearGradient(0, HZ, 0, CH);
-    g.addColorStop(0, th.haze); g.addColorStop(0.08, th.grass2); g.addColorStop(1, th.grass);
+    g.addColorStop(0, sc.haze); g.addColorStop(0.07, sc.grass2); g.addColorStop(1, sc.grass);
     ctx.fillStyle = g; ctx.fillRect(0, HZ, CW, CH - HZ);
-    const R0 = TR.R0, W = track.width;
-    ring(R0, R0 + W + 0.5, th.track);
-    ring(R0 - 0.25, R0, '#f2efe8');
-    ctx.beginPath(); polyPath(oval(R0 - 0.25)); ctx.fillStyle = th.infield; ctx.fill();
-    // 잔디 줄무늬
-    ctx.save(); ctx.beginPath(); polyPath(oval(R0 - 0.25)); ctx.clip();
-    for (let i = -8; i < 8; i += 2) quad([{ x: i * 6, y: -R0 }, { x: i * 6 + 6, y: -R0 }, { x: i * 6 + 6, y: R0 }, { x: i * 6, y: R0 }], 'rgba(255,255,255,0.06)');
-    ctx.restore();
+    const W = track.width, D = track.D;
+    scenes.ground(S.scene, S.theme, animT, W);
+    const x0 = -25, x1 = D + 60;
+    quad([{ x: x0, y: -0.5 }, { x: x1, y: -0.5 }, { x: x1, y: W + 0.5 }, { x: x0, y: W + 0.5 }], sc.surface);
     // 레인 선
-    ctx.beginPath();
-    for (let i = 1; i <= track.lanes; i++) { const r = R0 + i * TR.LW; polyPath(oval(r + 0.03)); polyPath(oval(r - 0.03)); }
-    ctx.fillStyle = th.line; ctx.fill('evenodd');
-    // 1자 코스: 홈 직선 연장 구간
-    if (S.lap === 'straight') {
-      const x0 = TR.L / 2 - STRAIGHT_D - 6, x1 = -TR.L / 2;
-      quad([{ x: x0, y: R0 - 0.25 }, { x: x1, y: R0 - 0.25 }, { x: x1, y: R0 + W + 0.5 }, { x: x0, y: R0 + W + 0.5 }], th.track);
-      quad([{ x: x0, y: R0 - 0.25 }, { x: x1, y: R0 - 0.25 }, { x: x1, y: R0 }, { x: x0, y: R0 }], '#f2efe8');
-      for (let i = 1; i <= track.lanes; i++) { const r = R0 + i * TR.LW; quad([{ x: x0, y: r - 0.03 }, { x: x1 + 0.5, y: r - 0.03 }, { x: x1 + 0.5, y: r + 0.03 }, { x: x0, y: r + 0.03 }], th.line); }
-    }
-    // 출발선 (주자별 스태거)
-    const hw = runners.length <= 8 ? TR.LW / 2 : track.width / runners.length / 2;
-    runners.forEach((o) => {
-      const p = pathPos(o.r, o.q0), nx = -p.hy, ny = p.hx, d = 0.07;
-      const P = (a, b) => ({ x: p.x + nx * a + p.hx * b, y: p.y + ny * a + p.hy * b });
-      quad([P(-hw, -d), P(hw, -d), P(hw, d), P(-hw, d)], 'rgba(255,255,255,0.95)');
-    });
+    ctx.globalAlpha = sc.lineA;
+    for (let i = 0; i <= track.lanes; i++) { const r = i * TR.LW; quad([{ x: x0, y: r - 0.03 }, { x: x1, y: r - 0.03 }, { x: x1, y: r + 0.03 }, { x: x0, y: r + 0.03 }], sc.line); }
+    // 10m 눈금
+    for (let m = 10; m < D; m += 10) quad([{ x: m - 0.05, y: -0.45 }, { x: m + 0.05, y: -0.45 }, { x: m + 0.05, y: -0.1 }, { x: m - 0.05, y: -0.1 }], sc.line);
+    ctx.globalAlpha = 1;
+    // 출발선
+    quad([{ x: -0.08, y: 0 }, { x: 0.08, y: 0 }, { x: 0.08, y: W }, { x: -0.08, y: W }], '#ffffff');
     // 결승선 (체크무늬)
-    const fx = TR.L / 2, sq = 0.4;
-    const cols = Math.ceil(W / sq);
+    const sq = 0.4, cols = Math.ceil(W / sq);
     for (let row = 0; row < 2; row++) for (let c = 0; c < cols; c++) {
-      const y0 = R0 + c * sq, y1 = Math.min(R0 + W, y0 + sq);
-      quad([{ x: fx + row * sq, y: y0 }, { x: fx + (row + 1) * sq, y: y0 }, { x: fx + (row + 1) * sq, y: y1 }, { x: fx + row * sq, y: y1 }], (row + c) % 2 ? '#222' : '#fff');
+      const y0 = c * sq, y1 = Math.min(W, y0 + sq);
+      quad([{ x: D + row * sq, y: y0 }, { x: D + (row + 1) * sq, y: y0 }, { x: D + (row + 1) * sq, y: y1 }, { x: D + row * sq, y: y1 }], (row + c) % 2 ? '#222' : '#fff');
     }
   }
 
-  function drawPost(y, th, withBanner) {
-    const x = TR.L / 2 + 0.2, H = 3.1;
+  // 출발·결승 아치 (기둥 + 현수막)
+  function drawPost(x, y, withBanner, text, color) {
+    const H = 3.1;
     const b = proj(x, y, 0), t = proj(x, y, H);
     if (b.zc < 1) return;
     ctx.strokeStyle = '#f5f5f5'; ctx.lineWidth = Math.max(2, 0.14 * b.k);
     ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(t.x, t.y); ctx.stroke();
     if (withBanner) {
-      const y1 = TR.R0 - 0.7, y2 = TR.R0 + track.width + 0.7;
+      const y1 = -0.7, y2 = track.width + 0.7;
       const a1 = proj(x, y1, H), a2 = proj(x, y2, H), b1 = proj(x, y1, H - 0.75), b2 = proj(x, y2, H - 0.75);
       if (a1.zc < 1 || a2.zc < 1) return;
-      ctx.fillStyle = '#ff6b4a';
+      ctx.fillStyle = color;
       ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(a2.x, a2.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(b1.x, b1.y); ctx.closePath(); ctx.fill();
       const mx = (a1.x + a2.x + b1.x + b2.x) / 4, my = (a1.y + a2.y + b1.y + b2.y) / 4;
       const fs = Math.abs(b2.y - a2.y + b1.y - a1.y) / 2 * 0.7;
       if (fs > 6) {
         ctx.save(); ctx.translate(mx, my);
-        const ang = Math.atan2(a2.y - a1.y, a2.x - a1.x);
+        // 글자가 항상 왼쪽→오른쪽으로 읽히도록 방향을 맞춤
+        const ang = a2.x >= a1.x ? Math.atan2(a2.y - a1.y, a2.x - a1.x) : Math.atan2(a1.y - a2.y, a1.x - a2.x);
         ctx.transform(Math.cos(ang), Math.sin(ang), 0, 1, 0, 0);
-        ctx.fillStyle = '#fff'; ctx.font = `800 ${fs}px 'Noto Sans KR',sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('FINISH', 0, 0); ctx.restore();
+        ctx.fillStyle = '#fff'; ctx.font = "800 " + fs + "px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(text, 0, 0); ctx.restore();
       }
     }
   }
@@ -553,21 +457,20 @@
     }
   }
 
+  // 진행 막대 (오른쪽 위): 출발 ~ 결승까지 주자 위치
   function drawMinimap() {
-    const w = Math.min(190, CW * 0.3), h = w * 0.55, x0 = CW - w - 12, y0 = 12;
-    ctx.fillStyle = 'rgba(255,255,255,0.82)'; roundRect(x0, y0, w, h, 12); ctx.fill();
-    const span = TR.L + 2 * (TR.R0 + track.width), sc = (w - 20) / span;
-    const cx = x0 + w / 2, cy = y0 + h / 2, ry = (h - 16) / (2 * (TR.R0 + track.width));
-    const P = (X, Y) => ({ x: cx + X * sc, y: cy + Y * ry });
-    ctx.strokeStyle = '#d98a6a'; ctx.lineWidth = Math.max(3, track.width * sc);
-    ctx.beginPath(); oval(TR.R0 + track.width / 2).forEach((q, i) => { const s = P(q.x, q.y); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.closePath(); ctx.stroke();
-    const f1 = P(TR.L / 2, TR.R0), f2 = P(TR.L / 2, TR.R0 + track.width);
-    ctx.strokeStyle = '#222'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f1.x, f1.y); ctx.lineTo(f2.x, f2.y); ctx.stroke();
+    const w = Math.min(240, CW * 0.38), h = 46, x0 = CW - w - 12, y0 = 12;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'; roundRect(x0, y0, w, h, 12); ctx.fill();
+    const D = track.D, lx = x0 + 16, rx = x0 + w - 16, ly = y0 + 30;
+    const X = (m) => lx + (rx - lx) * clamp(m / D, 0, 1);
+    ctx.strokeStyle = '#d98a6a'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ly); ctx.stroke(); ctx.lineCap = 'butt';
+    ctx.fillStyle = '#7a6250'; ctx.font = "700 10px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    for (let m = 0; m <= D; m += 50) ctx.fillText(m + 'm', X(m), y0 + 16);
     const focus = race.state === 'running' || race.state === 'done' ? (race.winner || ranking()[targetRank() - 1]) : null;
     runners.forEach((o) => {
-      const q = pathPos(o.r, o.q0 + o.s), s = P(q.x, q.y);
       ctx.fillStyle = o.look.shirt; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(s.x, s.y, o === focus ? 4.5 : 3, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(X(o.s), ly, o === focus ? 5 : 3.5, 0, 7); ctx.fill(); ctx.stroke();
     });
   }
 
@@ -606,13 +509,14 @@
     setupProj();
     const th = THEMES[S.theme] || THEMES.sunset;
     drawSky(th, animT);
-    drawGround(th);
+    drawGround();
     const focus = race.state === 'running' || race.state === 'done' ? (race.winner || ranking()[targetRank() - 1]) : null;
     const items = [];
-    city.items(S.theme, animT).forEach((it) => items.push(it));
-    decor.forEach((d) => items.push({ y: d.y, fn: () => (d.kind === 'tree' ? drawTree(d, th) : drawBush(d, th)) }));
-    items.push({ y: TR.R0 - 0.7, fn: () => drawPost(TR.R0 - 0.7, th, false) });
-    items.push({ y: TR.R0 + track.width + 0.7, fn: () => drawPost(TR.R0 + track.width + 0.7, th, true) });
+    if (S.scene === 'city') city.items(S.theme, animT).forEach((it) => items.push(it));
+    scenes.items(S.scene, S.theme, animT, track.width).forEach((it) => items.push(it));
+    const D = track.D, W = track.width;
+    items.push({ y: -0.7, fn: () => { drawPost(D + 0.2, -0.7, false); drawPost(-0.6, -0.7, false); } });
+    items.push({ y: W + 0.7, fn: () => { drawPost(D + 0.2, W + 0.7, true, 'FINISH', '#ff6b4a'); drawPost(-0.6, W + 0.7, false); } });
     const labels = [];
     runners.forEach((o) => { const pos = pathPos(o.r, o.q0 + o.s); items.push({ y: pos.y, fn: () => { const l = drawRunner(o, o === focus); if (l) labels.push(l); } }); });
     items.sort((a, b) => a.y - b.y).forEach((it) => it.fn());
@@ -700,11 +604,11 @@
   $$('.seg').forEach((sg) => sg.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const key = sg.dataset.key;
-    if ((key === 'mode' || key === 'lap') && (race.state === 'countdown')) return;
+    if ((key === 'mode' || key === 'dist') && (race.state === 'countdown')) return;
     if (key === 'mode' && race.state !== 'idle') resetRace();
     S[key] = b.dataset.v; store.set('runDraw.settings', S); syncSeg();
     if (key === 'music') { audioInit(); musicRestart(); }
-    if (key === 'lap') { hideModal(); build(false); }
+    if (key === 'dist') { hideModal(); build(false); }
   }));
   $('#nth').addEventListener('input', () => { S.nth = Math.max(1, +$('#nth').value || 1); store.set('runDraw.settings', S); if (race.state !== 'idle') resetRace(); setHud(); });
 

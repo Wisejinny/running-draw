@@ -103,9 +103,9 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
     </div>
 
     <div class="sec">
-      <div class="sec-h">코스</div>
-      <div class="seg" data-key="lap">
-        <button data-v="straight">1자 100m</button><button data-v="half">반 바퀴 200m</button><button data-v="full">한 바퀴 400m</button>
+      <div class="sec-h">거리 (일직선)</div>
+      <div class="seg" data-key="dist">
+        <button data-v="100">100m</button><button data-v="200">200m</button><button data-v="300">300m</button>
       </div>
     </div>
 
@@ -118,7 +118,14 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
     </div>
 
     <div class="sec">
-      <div class="sec-h">배경</div>
+      <div class="sec-h">장소</div>
+      <div class="seg" data-key="scene">
+        <button data-v="river">강변</button><button data-v="country">시골</button><button data-v="mountain">산</button><button data-v="city">도시</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">시간</div>
       <div class="seg" data-key="theme">
         <button data-v="sunset">노을</button><button data-v="day">맑은 낮</button><button data-v="night">밤</button>
       </div>
@@ -153,7 +160,7 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
       <div class="empty" id="arriveEmpty">출발하면 결승선을 통과한 순서대로 여기에 쌓여요.</div>
     </div>
 
-    <p class="tip">1자는 곧은 직선 100m, 반 바퀴는 곡선 + 직선, 한 바퀴는 트랙을 한 바퀴 돌아요. 바깥 레인은 앞에서 출발해서 모두 같은 거리를 달려요. 순위는 매번 무작위로 정해져요.</p>
+    <p class="tip">모두 같은 출발선에서 곧게 뻗은 길을 달려요. 장소와 시간을 바꾸면 풍경이 달라져요. 순위는 매번 무작위로 정해져요.</p>
   </aside>
 
   <main class="stage" id="stageWrap">
@@ -176,6 +183,7 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
 </div>
 <script src="runner.js"></script>
 <script src="city.js"></script>
+<script src="scenes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

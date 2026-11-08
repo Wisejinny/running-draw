@@ -60,18 +60,11 @@
       return b;
     }
 
-    // 도시 배치 (트랙 바깥 반지름 ≈ 52m)
-    addRow(-84, -78, -320, 320, 8, 13, ['shop', 'shop', 'office'], 3, 9);
-    addRow(-112, -100, -340, 340, 18, 40, ['office', 'apt', 'apt', 'glass'], 4, 12);
-    addRow(-150, -132, -380, 380, 30, 75, ['glass', 'office', 'apt', 'glass'], 6, 16);
-    addRow(-215, -180, -440, 440, 55, 130, ['glass', 'glass', 'office'], 8, 22);
-    // 양옆 (아파트 단지)
-    for (const side of [-1, 1]) {
-      for (let y = -70; y < 60; y += R(24, 32)) {
-        const x0 = side < 0 ? -R(135, 150) - 20 : R(118, 130);
-        blds.push(makeBld(x0, x0 + 20, y, 14, R(30, 55), pick(['apt', 'apt', 'office'])));
-      }
-    }
+    // 도시 배치 — 일직선 코스(x 0~300m) 뒤쪽으로 줄지어 선 건물들 (도로 너머)
+    addRow(-36, -30, -220, 640, 8, 13, ['shop', 'shop', 'shop', 'office'], 2, 6);
+    addRow(-66, -54, -240, 660, 18, 40, ['office', 'apt', 'apt', 'glass'], 4, 12);
+    addRow(-115, -95, -280, 700, 30, 75, ['glass', 'office', 'apt', 'glass'], 6, 16);
+    addRow(-200, -160, -340, 760, 55, 130, ['glass', 'glass', 'office'], 8, 22);
 
     // ---- 텍스처 (테마별로 한 번만 그림) ----
     function facade(b, key) {
@@ -346,8 +339,6 @@
     function items(key, time) {
       const out = [];
       for (const b of blds) out.push({ y: b.yf, fn: () => drawBox(b, key, time, facade) });
-      out.push({ y: stand.yf, fn: () => drawStand(key) });
-      for (const L of lights) out.push({ y: L.y, fn: () => drawLight(L, key, time) });
       return out;
     }
 
