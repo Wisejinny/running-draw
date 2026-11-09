@@ -21,14 +21,16 @@
   };
 
   // ---------- 설정 ----------
-  const S = Object.assign({ mode: 'first', nth: 2, theme: 'sunset', cam: 'follow', speed: '1', music: 'off', dist: '100', scene: 'river' }, store.get('runDraw.settings', {}));
+  const S = Object.assign({ mode: 'first', nth: 2, theme: 'sunset', cam: 'follow', speed: '1', music: 'off', dist: '100', scene: 'stadium', hurdle: 'off' }, store.get('runDraw.settings', {}));
+  if (!['stadium', 'rivercity', 'nightcity', 'greenhills', 'goldenmist', 'bluesky'].includes(S.scene)) S.scene = 'stadium';
+  if (S.music === 'fun') S.music = 'dance'; else if (S.music === 'tense') S.music = 'beat';
   const DEFAULT_NAMES = '김민준, 이서연, 박지호, 최하은, 정우진, 강수아, 조예준, 윤지우';
   const namesEl = $('#names');
   namesEl.value = store.get('runDraw.names', DEFAULT_NAMES);
 
   // ---------- 코스 (일직선) ----------
   const TR = { LW: 1.9 }; // 그림 속 레인 폭 (겹치지 않게 실제보다 넓게)
-  const track = { lanes: 8, width: 8 * TR.LW, rMin: 0, D: 0 };
+  const track = { lanes: 8, width: 8 * TR.LW, rMin: 0, D: 0, hurdles: [] };
 
   function parseNames(txt) {
     const out = [];
@@ -46,7 +48,7 @@
   // ---------- 주자 ----------
   let runners = [];
   let seedBase = store.get('runDraw.seed', (Math.random() * 1e9) | 0);
-  const V0 = () => track.D / (4 + track.D * 0.07); // 100m 약 11초, 200m 약 18초, 300m 약 25초
+  const V0 = () => track.D / (4 + track.D * 0.07) * (track.hurdles.length ? 0.9 : 1); // 100m 약 11초, 200m 약 18초, 300m 약 25초 (허들은 조금 느림)
 
   function build(reshuffle) {
     if (reshuffle) { seedBase = (Math.random() * 1e9) | 0; store.set('runDraw.seed', seedBase); }
@@ -66,6 +68,9 @@
       return { name: names[ni], idx: i, r, look, q0: 0, s: 0, v: 0, ph: lr() * 6.28, face: 1, k: 0 };
     });
     track.D = clamp(+S.dist || 100, 50, 300);
+    // 허들 10개: 첫 허들 13m, 마지막 허들 뒤 10.5m를 남기고 고르게 배치 (100m 허들 간격 8.5m와 같음)
+    track.hurdles = [];
+    if (S.hurdle === 'on') { const gap = (track.D - 13 - 10.5) / 9; for (let i = 0; i < 10; i++) track.hurdles.push(13 + i * gap); }
     runners.forEach((o) => { o.q0 = 0; }); // 모두 같은 출발선
     $('#cnt').textContent = n + '명';
     $('#hTot').textContent = n;
@@ -84,7 +89,7 @@
         react: 0.08 + rr() * 0.28, base: 0.965 + rr() * 0.07,
         w1: 0.5 + rr() * 0.9, w2: 1.1 + rr() * 1.4, p1: rr() * 6.28, p2: rr() * 6.28,
         ev: 0, evT: 1.5 + rr() * 2, evDur: 0, kick: rr() * 0.14 - 0.03, stumble: 0, oops: 0,
-        stride: 3.9 + rr() * 0.5
+        stride: 3.9 + rr() * 0.5, hi: 0, jump: -1, clip: false, knocked: []
       });
     });
     renderArrivals();
@@ -158,6 +163,13 @@
       o.v += (target - o.v) * Math.min(1, dt * acc);
       if (o.v < 0.05 && target === 0) o.v = 0;
       o.s += o.v * dt;
+      // 허들 넘기: 허들 1.9m 앞에서 뛰어 3.1m 날아감. 가끔 허들에 걸려 넘어뜨리고 잠깐 느려짐
+      if (track.hurdles.length && o.hi < track.hurdles.length) {
+        const hx = track.hurdles[o.hi];
+        if (o.jump < 0 && o.s >= hx - 1.9) { o.jump = hx - 1.9; o.clip = Math.random() < 0.08; }
+        if (o.jump >= 0 && o.clip && o.s >= hx && !o.knocked[o.hi]) { o.knocked[o.hi] = true; o.stumble = 0.45; o.oops = 1.0; sfxHurdle(); }
+        if (o.jump >= 0 && o.s >= o.jump + 3.1) { o.jump = -1; o.hi++; }
+      }
       o.ph += (o.v * dt * 2 * Math.PI) / o.stride;
       const kt = race.t < o.react ? 0.15 : clamp(o.v / (v0 * 0.8), 0, 1);
       o.k += (kt - o.k) * Math.min(1, dt * 6);
@@ -224,7 +236,7 @@
   }
 
   function setupProj() {
-    HZ = CH * 0.3;
+    HZ = CH * (PHOTO[S.scene] ? 0.4 : 0.3);
     F = (CH * 0.66 - HZ) / cam.ratio; // 목표점이 화면 66% 높이
   }
   const camY = () => cam.y + cam.back;
@@ -294,7 +306,46 @@
     return { far, mid, clouds, stars };
   })();
 
+  // ---------- 사진 배경 ----------
+  // hz: 사진에서 지평선의 높이 비율, surface: 그 위에 그릴 주로 색, lines: 레인 선 색
+  const PHOTO = {
+    stadium: { file: 'bg/stadium.jpg', hz: 0.54, surface: '#b9604c', lines: '#ffffff' },
+    rivercity: { file: 'bg/rivercity.jpg', hz: 0.55, surface: '#b8a58d', lines: '#ffffff' },
+    nightcity: { file: 'bg/nightcity.jpg', hz: 0.55, surface: '#5b4458', lines: '#ffd6f0' },
+    greenhills: { file: 'bg/greenhills.jpg', hz: 0.55, surface: '#c9a77d', lines: '#ffffff' },
+    goldenmist: { file: 'bg/goldenmist.jpg', hz: 0.55, surface: '#bda585', lines: '#fff6dc' },
+    bluesky: { file: 'bg/bluesky.jpg', hz: 0.55, surface: '#6aa655', lines: '#ffffff' }
+  };
+  const photoCache = {};
+  function getPhoto(key) {
+    let p = photoCache[key];
+    if (p) return p;
+    p = photoCache[key] = { img: new Image(), ready: false, top: '#9fb8d0', bot: '#7a8a6a' };
+    p.img.onload = () => {
+      p.ready = true;
+      try { // 위·아래 가장자리 평균 색 (사진이 모자란 곳을 이어 칠하는 용도)
+        const c = document.createElement('canvas'); c.width = 16; c.height = 16; const g = c.getContext('2d');
+        const avg = (sy, sh) => { g.clearRect(0, 0, 16, 16); g.drawImage(p.img, 0, sy, p.img.naturalWidth, sh, 0, 0, 16, 16); const d = g.getImageData(0, 0, 16, 16).data; let r = 0, gg = 0, b = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; } const n = d.length / 4; return 'rgb(' + Math.round(r / n) + ',' + Math.round(gg / n) + ',' + Math.round(b / n) + ')'; };
+        p.top = avg(0, Math.max(2, p.img.naturalHeight * 0.03)); p.bot = avg(p.img.naturalHeight * 0.97, Math.max(2, p.img.naturalHeight * 0.03));
+      } catch (e) { /* 색 추출 실패해도 사진은 그대로 나옴 */ }
+    };
+    p.img.src = PHOTO[key].file;
+    return p;
+  }
+  function drawPhotoBg(key) {
+    const def = PHOTO[key], p = getPhoto(key);
+    if (!p.ready) { const g = ctx.createLinearGradient(0, 0, 0, CH); g.addColorStop(0, '#cfe1ef'); g.addColorStop(0.4, '#e9eef0'); g.addColorStop(1, def.surface); ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH); return; }
+    const iw = p.img.naturalWidth, ih = p.img.naturalHeight;
+    const sc = Math.max(CW * 1.18 / iw, HZ / (def.hz * ih), (CH - HZ) / ((1 - def.hz) * ih)); // 가로·위·아래 모두 사진으로 채움
+    const dy = HZ - def.hz * ih * sc, w = iw * sc, h = ih * sc;
+    const pan = clamp(cam.x / Math.max(1, track.D), 0, 1) * Math.max(0, w - CW);
+    ctx.fillStyle = p.top; ctx.fillRect(0, 0, CW, Math.max(0, dy) + 2);
+    ctx.drawImage(p.img, -pan, dy, w, h);
+    if (dy + h < CH) { ctx.fillStyle = p.bot; ctx.fillRect(0, dy + h - 1, CW, CH - (dy + h) + 2); }
+  }
+
   function drawSky(th, time) {
+    if (PHOTO[S.scene]) { drawPhotoBg(S.scene); return; }
     const g = ctx.createLinearGradient(0, 0, 0, HZ);
     g.addColorStop(0, th.sky[0]); g.addColorStop(0.6, th.sky[1]); g.addColorStop(1, th.sky[2]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, CW, HZ + 2);
@@ -346,12 +397,15 @@
   const scenes = Scenes.create({ ctx: () => ctx, proj: (X, Y, Z) => proj(X, Y, Z), cam: () => cam, camY: () => camY(), W: () => CW, H: () => CH, HZ: () => HZ, quad, mulberry });
 
   function drawGround() {
-    const sc = scenes.colors(S.scene, S.theme);
-    const g = ctx.createLinearGradient(0, HZ, 0, CH);
-    g.addColorStop(0, sc.haze); g.addColorStop(0.07, sc.grass2); g.addColorStop(1, sc.grass);
-    ctx.fillStyle = g; ctx.fillRect(0, HZ, CW, CH - HZ);
+    const ph = PHOTO[S.scene];
+    const sc = ph ? { surface: ph.surface, line: ph.lines, lineA: 0.9, grass: ph.surface, grass2: ph.surface, haze: ph.surface } : scenes.colors(S.scene, S.theme);
+    if (!ph) {
+      const g = ctx.createLinearGradient(0, HZ, 0, CH);
+      g.addColorStop(0, sc.haze); g.addColorStop(0.07, sc.grass2); g.addColorStop(1, sc.grass);
+      ctx.fillStyle = g; ctx.fillRect(0, HZ, CW, CH - HZ);
+    }
     const W = track.width, D = track.D;
-    scenes.ground(S.scene, S.theme, animT, W);
+    if (!ph) scenes.ground(S.scene, S.theme, animT, W);
     const x0 = -25, x1 = D + 60;
     quad([{ x: x0, y: -0.5 }, { x: x1, y: -0.5 }, { x: x1, y: W + 0.5 }, { x: x0, y: W + 0.5 }], sc.surface);
     // 레인 선
@@ -402,16 +456,55 @@
     const p = proj(pos.x, pos.y, 0);
     if (p.zc < 1.2) return null;
     const sc = p.k * 0.021 * o.look.h;
-    // 그림자
-    ctx.fillStyle = 'rgba(40,20,10,0.18)';
-    ctx.beginPath(); ctx.ellipse(p.x, p.y, 20 * sc, 4.5 * sc, 0, 0, 7); ctx.fill();
-    ctx.save(); ctx.translate(p.x, p.y);
+    const u = o.jump >= 0 ? clamp((o.s - o.jump) / 3.1, 0, 1) : -1;
+    const lift = u >= 0 ? Math.sin(Math.PI * u) * 0.78 : 0;
+    const pj = lift ? proj(pos.x, pos.y, lift) : p;
+    // 그림자 (점프하면 작아짐)
+    const shs = 1 - lift * 0.4;
+    ctx.fillStyle = 'rgba(30,15,5,0.22)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 20 * sc * shs, 4.5 * sc * shs, 0, 0, 7); ctx.fill();
+    ctx.save(); ctx.translate(pj.x, pj.y);
     const f = Math.abs(o.face) < 0.18 ? Math.sign(o.face || 1) * 0.18 : o.face;
     ctx.scale(f * sc, sc);
-    Runner.draw(ctx, o.look, o.ph, { k: o.k, t: animT + o.idx });
+    let ph = o.ph;
+    if (u > 0.08 && u < 0.92) { ph = Math.PI / 2; ctx.rotate(0.22 * Math.sin(Math.PI * u)); } // 앞다리 쭉, 몸 앞으로
+    Runner.draw(ctx, o.look, ph, { k: o.k, t: animT + o.idx });
     ctx.restore();
-    const head = proj(pos.x, pos.y, 2.1 * o.look.h + 0.25);
+    const head = proj(pos.x, pos.y, 2.1 * o.look.h + 0.25 + lift);
     return { o, x: head.x, y: head.y, k: p.k, focus };
+  }
+
+  // 허들 한 개 (레인 폭에 맞춘 흰·검 줄무늬 가로대 + 다리)
+  function drawHurdle(x, r, knocked) {
+    const hw = Math.min(TR.LW, track.width / Math.max(1, runners.length)) * 0.42, H = 0.76;
+    const L0 = proj(x, r - hw, 0), L1 = proj(x, r + hw, 0);
+    if (L0.zc < 1.2 || L1.zc < 1.2) return;
+    if (L0.x < -200 || L0.x > CW + 200) return;
+    ctx.lineCap = 'round';
+    if (!knocked) {
+      const T0 = proj(x, r - hw, H), T1 = proj(x, r + hw, H);
+      ctx.strokeStyle = '#9aa0a8'; ctx.lineWidth = Math.max(1.2, 0.05 * L0.k);
+      ctx.beginPath(); ctx.moveTo(L0.x, L0.y); ctx.lineTo(T0.x, T0.y); ctx.moveTo(L1.x, L1.y); ctx.lineTo(T1.x, T1.y); ctx.stroke();
+      // 받침 발
+      const F0 = proj(x + 0.35, r - hw, 0), F1 = proj(x + 0.35, r + hw, 0);
+      ctx.beginPath(); ctx.moveTo(L0.x, L0.y); ctx.lineTo(F0.x, F0.y); ctx.moveTo(L1.x, L1.y); ctx.lineTo(F1.x, F1.y); ctx.stroke();
+      // 가로대 (줄무늬)
+      const n = 6, bh = 0.12;
+      for (let i = 0; i < n; i++) {
+        const a = proj(x, r - hw + (2 * hw * i) / n, H), b = proj(x, r - hw + (2 * hw * (i + 1)) / n, H);
+        const a2 = proj(x, r - hw + (2 * hw * i) / n, H - bh), b2 = proj(x, r - hw + (2 * hw * (i + 1)) / n, H - bh);
+        ctx.fillStyle = i % 2 ? '#1f2328' : '#ffffff';
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(a2.x, a2.y); ctx.closePath(); ctx.fill();
+      }
+    } else {
+      // 넘어진 허들: 앞으로 쓰러져 바닥에 누움
+      const a = proj(x + 0.7, r - hw, 0.08), b = proj(x + 0.7, r + hw, 0.08);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(2, 0.1 * L0.k);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.strokeStyle = '#9aa0a8'; ctx.lineWidth = Math.max(1.2, 0.05 * L0.k);
+      ctx.beginPath(); ctx.moveTo(L0.x, L0.y); ctx.lineTo(a.x, a.y); ctx.moveTo(L1.x, L1.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
   }
 
   // 이름표 겹침 방지: 가까운(화면 아래) 이름표부터 자리 잡고, 겹치면 위로 올림
@@ -512,11 +605,14 @@
     drawGround();
     const focus = race.state === 'running' || race.state === 'done' ? (race.winner || ranking()[targetRank() - 1]) : null;
     const items = [];
-    if (S.scene === 'city') city.items(S.theme, animT).forEach((it) => items.push(it));
-    scenes.items(S.scene, S.theme, animT, track.width).forEach((it) => items.push(it));
+    if (!PHOTO[S.scene]) {
+      if (S.scene === 'city') city.items(S.theme, animT).forEach((it) => items.push(it));
+      scenes.items(S.scene, S.theme, animT, track.width).forEach((it) => items.push(it));
+    }
     const D = track.D, W = track.width;
     items.push({ y: -0.7, fn: () => { drawPost(D + 0.2, -0.7, false); drawPost(-0.6, -0.7, false); } });
     items.push({ y: W + 0.7, fn: () => { drawPost(D + 0.2, W + 0.7, true, 'FINISH', '#ff6b4a'); drawPost(-0.6, W + 0.7, false); } });
+    track.hurdles.forEach((hx, hi) => runners.forEach((o) => items.push({ y: o.r - 0.05, fn: () => drawHurdle(hx, o.r, !!o.knocked[hi]) })));
     const labels = [];
     runners.forEach((o) => { const pos = pathPos(o.r, o.q0 + o.s); items.push({ y: pos.y, fn: () => { const l = drawRunner(o, o === focus); if (l) labels.push(l); } }); });
     items.sort((a, b) => a.y - b.y).forEach((it) => it.fn());
@@ -604,11 +700,11 @@
   $$('.seg').forEach((sg) => sg.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const key = sg.dataset.key;
-    if ((key === 'mode' || key === 'dist') && (race.state === 'countdown')) return;
+    if ((key === 'mode' || key === 'dist' || key === 'hurdle') && (race.state === 'countdown')) return;
     if (key === 'mode' && race.state !== 'idle') resetRace();
     S[key] = b.dataset.v; store.set('runDraw.settings', S); syncSeg();
     if (key === 'music') { audioInit(); musicRestart(); }
-    if (key === 'dist') { hideModal(); build(false); }
+    if (key === 'dist' || key === 'hurdle') { hideModal(); build(false); }
   }));
   $('#nth').addEventListener('input', () => { S.nth = Math.max(1, +$('#nth').value || 1); store.set('runDraw.settings', S); if (race.state !== 'idle') resetRace(); setHud(); });
 
@@ -678,6 +774,7 @@
   function sfxBeep(f) { if (!AU.c) return; tone(f, AU.c.currentTime, 0.18, 'square', 0.18); }
   function sfxGun() { if (!AU.c) return; const t = AU.c.currentTime; noise(t, 0.35, 0.9, 300); tone(990, t, 0.3, 'square', 0.15); }
   function sfxBlip(rank) { if (!AU.c) return; tone(rank === 1 ? 1320 : 880, AU.c.currentTime, 0.12, 'triangle', 0.15); }
+  function sfxHurdle() { if (!AU.c) return; const t = AU.c.currentTime; noise(t, 0.18, 0.5, 600); tone(140, t, 0.15, 'triangle', 0.25); }
   function sfxFanfare() {
     if (!AU.c) return; const t = AU.c.currentTime;
     [72, 76, 79, 84].forEach((m, i) => tone(mtof(m), t + i * 0.12, i === 3 ? 0.7 : 0.18, 'square', 0.16));
@@ -688,37 +785,17 @@
     if (race.state !== 'running') return 0;
     let m = 0; runners.forEach((o) => { m = Math.max(m, o.s / track.D); }); return m;
   }
+  const music = Music.create(() => AU.c, () => AU.mus);
   function musicTick() {
-    if (!AU.c || S.music === 'off') return;
+    if (!AU.c || S.music === 'off' || !music.genres.includes(S.music)) return;
     const c = AU.c;
     if (AU.nextT < c.currentTime) AU.nextT = c.currentTime + 0.05;
     const prog = leadProgress();
     const racing = race.state === 'running' || race.state === 'countdown';
-    const tempo = racing ? 1 + 0.4 * clamp((prog - 0.55) / 0.45, 0, 1) : 0.85;
-    const vol = racing ? 1 : 0.55;
+    const tempo = racing ? 1 + 0.25 * clamp((prog - 0.6) / 0.4, 0, 1) : 1;
+    const vol = racing ? 1 : 0.6;
     while (AU.nextT < c.currentTime + 0.15) {
-      const st = AU.step, t = AU.nextT;
-      if (S.music === 'fun') {
-        const bpm = 150 * tempo, e = 60 / bpm / 2;
-        const chords = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]];
-        const ch = chords[Math.floor(st / 8) % 4];
-        tone(mtof(ch[0] - 24 + (st % 2 ? 12 : 0)), t, e * 0.9, 'triangle', 0.32 * vol, AU.mus);
-        const mel = [0, 2, 1, 2, 0, 1, 2, 1, 2, 2, 1, 0, 1, 2, 0, 1];
-        if (st % 16 !== 7 && st % 16 !== 15) tone(mtof(ch[mel[st % 16]] + 12), t, e * 0.7, 'square', 0.09 * vol, AU.mus);
-        if (st % 4 === 0) { tone(110, t, 0.12, 'sine', 0.5 * vol, AU.mus); }
-        if (st % 8 === 4) noise(t, 0.12, 0.25 * vol, 1500, AU.mus);
-        noise(t, 0.03, 0.06 * vol, 7000, AU.mus);
-        AU.nextT += e;
-      } else {
-        const bpm = 112 * tempo, e = 60 / bpm / 2;
-        const roots = [45, 45, 41, 40];
-        const r = roots[Math.floor(st / 16) % 4];
-        tone(mtof(r - 12), t, e * 0.8, 'sawtooth', 0.12 * vol, AU.mus);
-        if (st % 8 === 0 || st % 8 === 1) tone(70, t, 0.18, 'sine', 0.55 * vol, AU.mus);
-        if (st % 2 === 0) tone(mtof(r + 24 + [0, 3, 7, 12][(st / 2) % 4]), t, e * 1.2, 'triangle', 0.06 * vol, AU.mus);
-        if (st % 4 === 2) noise(t, 0.04, 0.08 * vol, 5000, AU.mus);
-        AU.nextT += e;
-      }
+      AU.nextT += music.play(S.music, AU.step, AU.nextT, vol, tempo);
       AU.step++;
     }
   }

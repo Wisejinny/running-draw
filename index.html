@@ -33,6 +33,11 @@ input[type=text],input[type=number]{border:1.5px solid var(--line);border-radius
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
 .seg button{border:0;background:transparent;padding:9px 4px;font:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer}
 .seg button+button{border-left:1.5px solid var(--line)}
+.seg.seg-wrap3{grid-auto-flow:row;grid-template-columns:repeat(3,1fr)}
+.seg.seg-wrap3 button:nth-child(n+4){border-top:1.5px solid var(--line)}
+.seg.seg-wrap3 button:nth-child(3n+1){border-left:0}
+.seg.seg-wrap{grid-auto-flow:row;grid-template-columns:repeat(5,1fr)}
+.seg.seg-wrap button+button{border-left:1.5px solid var(--line)}
 .seg button.on{background:var(--sel);color:var(--selInk)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line);border-radius:999px;padding:4px 6px 4px 12px;font-size:12px;font-weight:700;background:#fff;cursor:pointer}
@@ -110,6 +115,13 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
     </div>
 
     <div class="sec">
+      <div class="sec-h">코스 종류</div>
+      <div class="seg" data-key="hurdle">
+        <button data-v="off">달리기</button><button data-v="on">허들 넘기</button>
+      </div>
+    </div>
+
+    <div class="sec">
       <div class="sec-h">당첨 기준</div>
       <div class="seg" data-key="mode">
         <button data-v="first">먼저 도착</button><button data-v="last">꼴찌 도착</button><button data-v="nth">순위 지정</button>
@@ -118,16 +130,10 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
     </div>
 
     <div class="sec">
-      <div class="sec-h">장소</div>
-      <div class="seg" data-key="scene">
-        <button data-v="river">강변</button><button data-v="country">시골</button><button data-v="mountain">산</button><button data-v="city">도시</button>
-      </div>
-    </div>
-
-    <div class="sec">
-      <div class="sec-h">시간</div>
-      <div class="seg" data-key="theme">
-        <button data-v="sunset">노을</button><button data-v="day">맑은 낮</button><button data-v="night">밤</button>
+      <div class="sec-h">배경 사진</div>
+      <div class="seg seg-wrap3" data-key="scene">
+        <button data-v="stadium">경기장</button><button data-v="rivercity">강변 도시</button><button data-v="nightcity">밤 불꽃</button>
+        <button data-v="greenhills">푸른 언덕</button><button data-v="goldenmist">아침 안개</button><button data-v="bluesky">파란 하늘</button>
       </div>
     </div>
 
@@ -148,8 +154,8 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
 
     <div class="sec">
       <div class="sec-h">음악</div>
-      <div class="seg" data-key="music">
-        <button data-v="off">끄기</button><button data-v="fun">신나는</button><button data-v="tense">긴장되는</button>
+      <div class="seg seg-wrap" data-key="music">
+        <button data-v="off">끄기</button><button data-v="beat">비트</button><button data-v="cheer">응원가</button><button data-v="dance">댄스</button><button data-v="calm">잔잔한</button>
       </div>
       <p class="hint">결승선이 가까워지면 템포가 빨라져요.</p>
     </div>
@@ -184,6 +190,7 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
 <script src="runner.js"></script>
 <script src="city.js"></script>
 <script src="scenes.js"></script>
+<script src="music.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
