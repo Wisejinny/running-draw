@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>달리기 뽑기</title>
+<title>경주 뽑기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
@@ -33,6 +33,11 @@ input[type=text],input[type=number]{border:1.5px solid var(--line);border-radius
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
 .seg button{border:0;background:transparent;padding:9px 4px;font:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer}
 .seg button+button{border-left:1.5px solid var(--line)}
+.seg.seg-sport{grid-auto-flow:row;grid-template-columns:repeat(3,1fr)}
+.seg.seg-sport button{padding:9px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.2}
+.seg.seg-sport button .ic{font-size:20px}
+.seg.seg-sport button:nth-child(n+4){border-top:1.5px solid var(--line)}
+.seg.seg-sport button:nth-child(3n+1){border-left:0}
 .seg.seg-wrap3{grid-auto-flow:row;grid-template-columns:repeat(3,1fr)}
 .seg.seg-wrap3 button:nth-child(n+4){border-top:1.5px solid var(--line)}
 .seg.seg-wrap3 button:nth-child(3n+1){border-left:0}
@@ -85,7 +90,12 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
 <body>
 <div class="app">
   <aside class="panel">
-    <div class="brand"><h1>달리기 뽑기</h1><small>RUN&nbsp;DRAW</small></div>
+    <div class="brand"><h1>경주 뽑기</h1><small>RACE&nbsp;DRAW</small></div>
+
+    <div class="sec">
+      <div class="sec-h">종목</div>
+      <div class="seg seg-sport" data-key="sport"></div>
+    </div>
 
     <div class="sec">
       <div class="sec-h">참가자 <b id="cnt">0명</b></div>
@@ -107,14 +117,12 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
       <div class="chips" id="favs"></div>
     </div>
 
-    <div class="sec">
-      <div class="sec-h">거리 (일직선)</div>
-      <div class="seg" data-key="dist">
-        <button data-v="100">100m</button><button data-v="200">200m</button><button data-v="300">300m</button>
-      </div>
+    <div class="sec" id="secDist">
+      <div class="sec-h">거리</div>
+      <div class="seg" data-key="dist"></div>
     </div>
 
-    <div class="sec">
+    <div class="sec" id="secHurdle">
       <div class="sec-h">코스 종류</div>
       <div class="seg" data-key="hurdle">
         <button data-v="off">달리기</button><button data-v="on">허들 넘기</button>
@@ -129,7 +137,7 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
       <div class="nth" id="nthBox"><input id="nth" type="number" min="1" value="2"> 번째로 들어온 사람이 당첨</div>
     </div>
 
-    <div class="sec">
+    <div class="sec" id="secScene">
       <div class="sec-h">배경 사진</div>
       <div class="seg seg-wrap3" data-key="scene">
         <button data-v="stadium">경기장</button><button data-v="rivercity">강변 도시</button><button data-v="nightcity">밤 불꽃</button>
@@ -166,7 +174,7 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
       <div class="empty" id="arriveEmpty">출발하면 결승선을 통과한 순서대로 여기에 쌓여요.</div>
     </div>
 
-    <p class="tip">모두 같은 출발선에서 곧게 뻗은 길을 달려요. 장소와 시간을 바꾸면 풍경이 달라져요. 순위는 매번 무작위로 정해져요.</p>
+    <p class="tip">종목을 고르면 그 경기장과 참가자(말·자전거·보트·스키·수영)가 나와요. 결승선이 가까워지면 관중이 환호해요. 순위는 매번 무작위로 정해져요.</p>
   </aside>
 
   <main class="stage" id="stageWrap">
@@ -188,8 +196,9 @@ ol.arrive li.win{border-color:var(--accent);background:#fff1ea;font-weight:800}
   </main>
 </div>
 <script src="runner.js"></script>
-<script src="city.js"></script>
-<script src="scenes.js"></script>
+<script src="sprites.js"></script>
+<script src="sports.js"></script>
+<script src="crowd-audio.js"></script>
 <script src="music.js"></script>
 <script src="app.js"></script>
 </body>
